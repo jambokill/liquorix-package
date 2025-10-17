@@ -1,0 +1,47 @@
+name: Liquorix Build Test (No Sign)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Docker and GnuPG
+        run: |
+          sudo apt update
+          sudo apt install -y docker.io gnupg
+
+      - name: Make scripts executable
+        run: chmod +x scripts/debian/*.sh
+
+      - name: Disable signing in scripts
+        run: |
+          find scripts/debian/ -type f -exec sed -i 's/dpkg-buildpackage /dpkg-buildpackage --no-sign /g' {} \;
+
+      - name: Bootstrap Docker images
+        run: ./scripts/debian/docker_bootstrap.sh
+
+      - name: Build source package
+        run: ./scripts/debian/docker_build-source.sh debian bookworm
+
+      - name: Build binary package
+        run: ./scripts/debian/docker_build-binary.sh amd64 debian bookworm
+
+      - name: List built artifacts
+        run: ls -l artifacts/debian/bookworm
+
+      - name: Upload built .deb packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: liquorix-deb
+          path: artifacts/debian/bookworm/*.deb
