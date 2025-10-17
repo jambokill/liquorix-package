@@ -14,12 +14,9 @@ jobs:
       DEB_BUILD_DIR: ${{ github.workspace }}/deb_build
 
     steps:
-      # 1. Checkout the repository
-      - name: Checkout Liquorix source
+      # 1. Checkout the repository (current repo)
+      - name: Checkout source
         uses: actions/checkout@v4
-        with:
-          repository: damentz/linux-liquorix
-          path: linux-liquorix
 
       # 2. Install build dependencies
       - name: Install build dependencies
