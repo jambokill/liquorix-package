@@ -1,52 +1,57 @@
-# File: .github/workflows/build-liquorix-test.yml
-
-name: Build Liquorix Kernel (Test Only)
+name: Build Liquorix Kernel (Docker Test Build)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # manual trigger
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    name: Build Kernel
     runs-on: ubuntu-latest
-
     env:
-      DEB_BUILD_DIR: ${{ github.workspace }}/deb_build
+      DEBIAN_FRONTEND: noninteractive
 
     steps:
-      # 1. Checkout the repository (current repo)
+      # 1. Checkout repository
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # 2. Install build dependencies
-      - name: Install build dependencies
+      # 2. Install Docker and GnuPG
+      - name: Install Docker and GnuPG
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential fakeroot dpkg-dev libncurses-dev bison flex \
-            libssl-dev bc libelf-dev cpio git kernel-package
+          sudo apt update
+          sudo apt install -y docker.io gnupg
 
-      # 3. Prepare artifact folder
-      - name: Prepare build folder
-        run: mkdir -p $DEB_BUILD_DIR
+      # 3. Make Liquorix scripts executable
+      - name: Make scripts executable
+        run: chmod +x scripts/debian/*.sh
 
-      # 4. Build Debian packages exactly as source defines
-      - name: Build Debian packages
+      # 4. Disable signing in scripts for first test build
+      - name: Disable dpkg signing
         run: |
-          cd linux-liquorix
-          fakeroot debian/rules clean
-          fakeroot debian/rules binary-headers binary-generic
+          find scripts/debian/ -type f -exec sed -i 's/dpkg-buildpackage /dpkg-buildpackage --no-sign /g' {} \;
 
-      # 5. Collect the resulting .deb packages
-      - name: Collect .deb artifacts
-        run: |
-          mkdir -p $DEB_BUILD_DIR
-          mv linux-*.deb $DEB_BUILD_DIR/ || true
-          mv ../linux-*.deb $DEB_BUILD_DIR/ || true
+      # 5. Bootstrap Docker images
+      - name: Bootstrap Docker images
+        run: ./scripts/debian/docker_bootstrap.sh
 
-      # 6. Upload artifacts
-      - name: Upload Kernel Artifacts
-        uses: actions/upload-artifact@v4
+      # 6. Build source package
+      - name: Build source package
+        run: ./scripts/debian/docker_build-source.sh debian bookworm
+
+      # 7. Build binary package
+      - name: Build binary package
+        run: ./scripts/debian/docker_build-binary.sh amd64 debian bookworm
+
+      # 8. List built artifacts
+      - name: List artifacts
+        run: ls -l artifacts/debian/bookworm
+
+      # 9. Upload built .deb packages
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
         with:
-          name: liquorix-kernel
-          path: $DEB_BUILD_DIR/
+          name: liquorix-deb
+          path: artifacts/debian/bookworm/*.deb
