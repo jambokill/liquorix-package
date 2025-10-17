@@ -1,0 +1,66 @@
+# File: .github/workflows/build-liquorix.yml
+
+name: Build Liquorix Kernel with AMD P-State
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest
+
+    env:
+      DEB_BUILD_DIR: ${{ github.workspace }}/deb_build
+
+    steps:
+      # 1. Checkout the repository
+      - name: Checkout Liquorix source
+        uses: actions/checkout@v4
+        with:
+          # Replace with your Liquorix source repo if different
+          repository: damentz/linux-liquorix
+          path: linux-liquorix
+
+      # 2. Install build dependencies
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential fakeroot dpkg-dev libncurses-dev bison flex \
+            libssl-dev bc libelf-dev cpio git kernel-package
+
+      # 3. Create artifact folder
+      - name: Prepare build folder
+        run: mkdir -p $DEB_BUILD_DIR
+
+      # 4. Enable AMD P-State in Debian config fragment
+      - name: Enable AMD P-State
+        run: |
+          CONFIG_FILE=linux-liquorix/debian/config/kernelarch-x86/config-arch-64
+          # Enable AMD P-State
+          sed -i 's/# CONFIG_X86_AMD_PSTATE is not set/CONFIG_X86_AMD_PSTATE=y/' $CONFIG_FILE
+          echo 'CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=2' >> $CONFIG_FILE
+          # Optional: set default cmdline
+          echo 'CONFIG_CMDLINE="amd_pstate=enable"' >> $CONFIG_FILE
+
+      # 5. Build Debian packages with a custom local version
+      - name: Build Debian packages
+        run: |
+          cd linux-liquorix
+          fakeroot debian/rules clean
+          fakeroot debian/rules binary-headers binary-generic LOCALVERSION=-amd-pstate
+
+      # 6. Collect the resulting .deb packages
+      - name: Collect .deb artifacts
+        run: |
+          mkdir -p $DEB_BUILD_DIR
+          mv linux-*.deb $DEB_BUILD_DIR/ || true
+          mv ../linux-*.deb $DEB_BUILD_DIR/ || true
+
+      # 7. Upload artifacts
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: liquorix-kernel
+          path: $DEB_BUILD_DIR/
